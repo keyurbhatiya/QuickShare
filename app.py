@@ -4,13 +4,21 @@ import sys
 import time
 import hashlib
 import threading
+import platform
 
 app = Flask(__name__)
 
 # --- Configuration ---
-UPLOAD_FOLDER = "/tmp/uploads" 
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+if platform.system() == "Windows":
+    # Use local project folder on Windows
+    UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploads")
+else:
+    # Use /tmp/uploads on Linux (Render)
+    UPLOAD_FOLDER = "/tmp/uploads"
+
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 # 5 minutes validity
 EXPIRATION_SECONDS = 5 * 60 
