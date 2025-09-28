@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickShare - Professional File & Link Sharing</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Use Inter font for a professional look */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column; /* Stack content vertically */
+            /* Removed align-items: center and justify-content: center to allow sticky footer */
+            background-color: #0d1117; /* Dark background */
+        }
+        .card-container {
+            /* Keep max-width and centering margin for content */
+            max-width: 90%;
+            width: 500px;
+        }
+        /* Custom progress bar transition */
+        .progress-bar {
+            transition: width 0.3s ease-in-out;
+        }
+        /* Style for drag-and-drop highlight */
+        #drop-area.highlight {
+            background-color: #1e293b; 
+            border-color: #3b82f6;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 p-4">
+
+<!-- Main content wrapper: Takes available vertical space (flex-grow), centers content (items-center justify-center), and limits width -->
+<div class="flex flex-col items-center justify-center flex-grow w-full">
+    <div class="card-container mx-auto">
+        <header class="text-center mb-10">
+            <!-- Lucide Icon for Professional Visuals (Share/Upload) -->
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 text-blue-500 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/>
+            </svg>
+            <h1 class="text-3xl font-extrabold mt-3 text-white">QuickShare</h1>
+            <p class="text-gray-400 mt-1">Content is valid for **5 minutes** before permanent deletion.</p>
+        </header>
+
+        <!-- Upload/Sender Card -->
+        <div class="bg-[#161b22] border border-gray-700 rounded-xl shadow-2xl p-6 mb-8">
+            <h2 class="text-xl font-semibold mb-5 text-white">Sender: Upload & Generate Code</h2>
+            <form id="uploadForm">
+                <!-- Links Input -->
+                <div class="mb-4">
+                    <label for="linksInput" class="block text-sm font-medium text-gray-300 mb-2">Paste Links or Text</label>
+                    <textarea class="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg focus:ring-blue-500 focus:border-blue-500 placeholder-gray-500 transition duration-150 ease-in-out resize-none h-24" 
+                              id="linksInput" name="links" placeholder="https://link-to-file.com&#10;Some quick text..."></textarea>
+                </div>
+
+                <!-- File Drop Area -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Or, Upload Files</label>
+                    <div id="drop-area" class="border-2 border-dashed border-gray-600 rounded-lg p-10 text-center cursor-pointer transition duration-300 hover:border-blue-500/50">
+                        <input type="file" id="fileInput" name="file" class="hidden">
+                        <!-- Upload Cloud Icon -->
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-gray-500 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 19v-6"/><path d="M12 13l4 4"/><path d="M12 13l-4 4"/><path d="M10 20h4"/><path d="M18 10V6a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v4"/><path d="M16 10H8"/>
+                        </svg>
+                        <p class="mt-3 text-sm text-gray-400">Drag and drop or <span class="text-blue-400 font-semibold">Click to browse</span></p>
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full bg-blue-600 text-white p-3 rounded-lg font-bold hover:bg-blue-700 transition duration-300 focus:outline-none focus:ring-4 focus:ring-blue-500/50" disabled>
+                    Share Content
+                </button>
+            </form>
+
+            <!-- Upload Progress & Result Section -->
+            <div id="uploadProgressContainer" class="mt-6" style="display:none;">
+                <p class="text-sm text-gray-300 mb-2 font-medium" id="uploadStatusText">Uploading (0%)...</p>
+                <div class="w-full bg-gray-700 rounded-full h-2.5">
+                    <div id="progressBarFill" class="bg-blue-500 h-2.5 rounded-full progress-bar" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div id="uploadResult" class="mt-6">
+                <!-- Results will be injected here -->
+            </div>
+        </div>
+
+        <!-- Download/Receiver Card -->
+        <div class="bg-[#161b22] border border-gray-700 rounded-xl shadow-2xl p-6">
+            <h2 class="text-xl font-semibold mb-5 text-white">Receiver: Download Content</h2>
+            <form id="downloadForm">
+                <div class="flex flex-col sm:flex-row sm:space-x-3 space-y-3 sm:space-y-0">
+                    <input type="text" class="flex-1 p-3 bg-gray-800 border border-gray-700 rounded-lg focus:ring-green-500 focus:border-green-500 placeholder-gray-500 transition duration-150 ease-in-out text-lg" 
+                           name="code" placeholder="Enter 6-digit Code">
+                    <button type="submit" class="bg-green-600 text-white p-3 rounded-lg font-bold hover:bg-green-700 transition duration-300 focus:outline-none focus:ring-4 focus:ring-green-500/50 flex items-center justify-center">
+                        <!-- Download Icon -->
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                        Download
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Footer with Copyright and Social Links -->
+<footer class="mt-8 text-center text-gray-500 pb-4">
+<div class="flex justify-center space-x-6 mb-3">
+  <!-- LinkedIn -->
+  <a href="https://linkedin.com/in/keyurbhatiya" target="_blank" class="hover:text-blue-500 transition" aria-label="LinkedIn">
+    <svg xmlns="http://www.w3.org/2000/svg" class="lucide lucide-linkedin" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4v-7a6 6 0 0 1 6-6z"/>
+      <rect width="4" height="12" x="2" y="9"/>
+      <circle cx="4" cy="4" r="2"/>
+    </svg>
+  </a>
+
+  <!-- GitHub -->
+  <a href="https://github.com/keyurbhatiya" target="_blank" class="hover:text-gray-900 transition dark:hover:text-white" aria-label="GitHub">
+    <svg xmlns="http://www.w3.org/2000/svg" class="lucide lucide-github" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3-1 3-3 3-5.5a6 6 0 0 0-1.7-4.2 5.9 5.9 0 0 0-8.6 0A6 6 0 0 0 5 9c0 2.5 0 4.5 3 5.5A4.8 4.8 0 0 0 7 18v4"/>
+      <path d="M9 18c-4 1.5-6-2-6-2"/>
+    </svg>
+  </a>
+
+  <!-- Instagram -->
+  <a href="https://www.instagram.com/keyur_bhatiya" target="_blank" class="hover:text-pink-500 transition" aria-label="Instagram">
+    <svg xmlns="http://www.w3.org/2000/svg" class="lucide lucide-instagram" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+      <path d="M16 11.37A4.65 4.65 0 1 1 11.37 16 4.65 4.65 0 0 1 16 11.37z"/>
+      <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+    </svg>
+  </a>
+</div>
+
+    <p class="text-sm">&copy; 2025 Keyur Bhatiya. All rights reserved.</p>
+</footer>
+
+<script>
+    // --- Lucide Icon SVGs (used in script for result messages) ---
+    const successIcon = '<svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-green-400 mr-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+    const errorIcon = '<svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-red-400 mr-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" x2="9" y1="9" y2="15"/><line x1="9" x2="15" y1="9" y2="15"/></svg>';
+    const copyIcon = '<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
+    const linkIcon = '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+    
+    // --- DOM Elements ---
+    const dropArea = document.getElementById('drop-area');
+    const fileInput = document.getElementById('fileInput');
+    const linksInput = document.getElementById("linksInput");
+    const uploadForm = document.getElementById("uploadForm");
+    const uploadSubmitBtn = uploadForm.querySelector('button[type="submit"]');
+    const uploadProgressContainer = document.getElementById("uploadProgressContainer");
+    const progressBarFill = document.getElementById("progressBarFill");
+    const uploadStatusText = document.getElementById("uploadStatusText");
+    const uploadResult = document.getElementById("uploadResult");
+
+    let countdownInterval = null;
+    const EXPIRATION_SECONDS = 5 * 60; // Keep in sync with backend
+
+    // --- Utility Functions ---
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    function checkFormValidity() {
+        const hasLinks = linksInput.value.trim().length > 0;
+        const hasFile = fileInput.files.length > 0;
+        uploadSubmitBtn.disabled = !(hasLinks || hasFile);
+    }
+    
+    // Initial check and listeners
+    checkFormValidity();
+    linksInput.addEventListener('input', checkFormValidity);
+    fileInput.addEventListener('change', () => {
+        checkFormValidity();
+        // If file is selected via click, automatically submit
+        if (fileInput.files.length > 0 && !uploadSubmitBtn.disabled) {
+            uploadForm.requestSubmit();
+        }
+    });
+
+    // --- Drag & Drop Handlers ---
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropArea.addEventListener(eventName, preventDefaults, false);
+    });
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropArea.addEventListener(eventName, () => dropArea.classList.add('highlight'), false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropArea.addEventListener(eventName, () => dropArea.classList.remove('highlight'), false);
+    });
+
+    dropArea.addEventListener('drop', handleDrop, false);
+
+    dropArea.addEventListener('click', () => {
+        fileInput.click();
+    });
+
+    function handleDrop(e) {
+        let dt = e.dataTransfer;
+        fileInput.files = dt.files;
+        checkFormValidity();
+    }
+
+    // --- Clipboard Copy Function ---
+    function copyToClipboard(text, element) {
+        try {
+            const tempInput = document.createElement('textarea');
+            tempInput.value = text;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+
+            const originalText = element.dataset.originalText || element.textContent;
+            element.dataset.originalText = originalText;
+            element.textContent = 'Copied!';
+            
+            // Revert button text after 2 seconds
+            setTimeout(() => {
+                element.textContent = originalText;
+                // Clear the temporary attribute
+                delete element.dataset.originalText;
+            }, 2000);
+        } catch (err) {
+            console.error('Copy failed:', err);
+        }
+    }
+
+    // --- Expiration Countdown Logic ---
+    function startCountdown(timestamp) {
+        if (countdownInterval) {
+            clearInterval(countdownInterval);
+        }
+
+        const expirationTime = timestamp + EXPIRATION_SECONDS;
+        const timerElement = document.getElementById('countdownTimer');
+        
+        function updateTimer() {
+            // Use Date.now() / 1000 to get current time in seconds
+            const remaining = Math.max(0, expirationTime - (Date.now() / 1000));
+            const minutes = Math.floor(remaining / 60);
+            const seconds = Math.floor(remaining % 60);
+
+            if (remaining <= 0) {
+                clearInterval(countdownInterval);
+                timerElement.innerHTML = '<span class="text-red-400 font-bold">Expired!</span>';
+                
+                // Clear state from localStorage when timer expires
+                localStorage.removeItem('quickshare_data');
+
+                // Visually update the result card to show expiration
+                const resultCard = uploadResult.querySelector('.bg-green-900\\/50, .bg-red-900\\/50');
+                if (resultCard) {
+                    resultCard.classList.remove('bg-green-900/50', 'border-green-700');
+                    resultCard.classList.add('bg-red-900/50', 'border-red-700');
+                }
+            } else {
+                timerElement.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            }
+        }
+
+        countdownInterval = setInterval(updateTimer, 1000);
+        updateTimer(); // Initial call
+    }
+    
+    // --- Reusable Result Renderer ---
+    function renderSuccessResult(data) {
+        // Determine the full download URL relative to the current host
+        // Use the saved download_url from data, or reconstruct if missing (for legacy data)
+        const downloadUrlPath = data.download_url || `/api/download?code=${data.code}`;
+        const downloadUrl = window.location.origin + downloadUrlPath;
+
+        const qrCodeHtml = data.qr_code 
+            ? `<img src="${data.qr_code}" class="w-32 h-32 mt-4 mx-auto border border-gray-700 rounded-lg p-1 bg-white" alt="QR Code">
+               <p class="text-xs text-gray-400 mt-2">Scan to download on mobile.</p>` 
+            : '';
+        
+        uploadResult.innerHTML = `
+            <div class="p-4 bg-green-900/50 border border-green-700 text-green-300 rounded-xl">
+                <div class="flex items-center mb-3">
+                    ${successIcon}
+                    <span class="text-lg font-semibold text-white">${data.message}</span>
+                </div>
+                
+                <div class="flex justify-between items-center mb-4 p-3 bg-gray-800 rounded-lg border border-gray-700">
+                    <p class="text-sm font-medium text-gray-400">Time Remaining:</p>
+                    <span id="countdownTimer" class="text-xl font-mono text-yellow-300 font-bold">5:00</span>
+                </div>
+                
+                <!-- CODE DISPLAY -->
+                <div class="flex items-center bg-gray-800 p-3 rounded-lg justify-between mb-4">
+                    <span id="shareCode" class="text-2xl font-mono font-bold text-blue-300">${data.code}</span>
+                    <button id="copyCodeBtn" type="button" class="flex items-center space-x-1 p-2 text-sm text-gray-300 bg-gray-700 rounded-md hover:bg-gray-600 transition">
+                        ${copyIcon}
+                        <span>Copy Code</span>
+                    </button>
+                </div>
+
+                <!-- COPY LINK BUTTON -->
+                <button id="copyLinkBtn" type="button" class="w-full inline-flex justify-center items-center px-4 py-2 border border-blue-600 text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 transition">
+                    ${linkIcon}
+                    Copy Download Link
+                </button>
+
+                ${qrCodeHtml}
+            </div>`;
+
+        // Add event listeners dynamically after injecting HTML
+        document.getElementById('copyCodeBtn').addEventListener('click', (event) => {
+            event.preventDefault(); 
+            copyToClipboard(data.code, document.getElementById('copyCodeBtn'));
+        });
+        
+        document.getElementById('copyLinkBtn').addEventListener('click', (event) => {
+            event.preventDefault(); 
+            copyToClipboard(downloadUrl, document.getElementById('copyLinkBtn'));
+        });
+    }
+
+
+    // --- Upload Logic (XMLHttpRequest for Progress) ---
+
+    uploadForm.addEventListener("submit", async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+
+        const hasLinks = linksInput.value.trim().length > 0;
+        const hasFile = fileInput.files.length > 0;
+
+        if (!hasLinks && !hasFile) {
+            uploadResult.innerHTML = `<div class="p-4 bg-red-900/50 border border-red-700 text-red-300 rounded-lg flex items-center">${errorIcon} Please provide links/text or select a file.</div>`;
+            return;
+        }
+
+        // --- Prepare UI for Upload ---
+        uploadResult.innerHTML = '';
+        uploadProgressContainer.style.display = 'block';
+        progressBarFill.style.width = '0%';
+        uploadStatusText.textContent = 'Uploading (0%)...';
+        
+        uploadSubmitBtn.disabled = true;
+        uploadSubmitBtn.textContent = 'Processing...';
+
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/upload', true);
+
+        // Progress Handler
+        xhr.upload.addEventListener('progress', (event) => {
+            if (event.lengthComputable) {
+                const percentComplete = (event.loaded / event.total) * 100;
+                const roundedPercent = Math.round(percentComplete);
+                progressBarFill.style.width = `${roundedPercent}%`;
+                uploadStatusText.textContent = `Uploading (${roundedPercent}%)...`;
+            }
+        });
+
+        // Load/Error Handler
+        xhr.onload = () => {
+            uploadProgressContainer.style.display = 'none';
+            uploadSubmitBtn.disabled = false;
+            uploadSubmitBtn.textContent = 'Share Content';
+
+            let data;
+            try {
+                data = JSON.parse(xhr.responseText);
+            } catch (err) {
+                uploadResult.innerHTML = `<div class="p-4 bg-red-900/50 border border-red-700 text-red-300 rounded-xl flex items-center">${errorIcon} Server response error.</div>`;
+                return;
+            }
+
+
+            if (xhr.status === 200) {
+                // --- Store data for persistence on refresh ---
+                localStorage.setItem('quickshare_data', JSON.stringify({
+                    code: data.code,
+                    timestamp: data.timestamp, // Server-provided Unix timestamp (seconds)
+                    download_url: data.download_url,
+                    qr_code: data.qr_code,
+                    message: data.message
+                }));
+
+                // --- Render Result ---
+                renderSuccessResult(data);
+
+                // Start the countdown timer
+                if (data.timestamp) {
+                    startCountdown(data.timestamp);
+                }
+
+                // Clear input fields and reset form state
+                linksInput.value = '';
+                fileInput.value = ''; 
+                checkFormValidity(); // Disable button again
+            } else {
+                // --- Error Response Rendering ---
+                const errorMessage = data.error || "An unknown error occurred.";
+                uploadResult.innerHTML = `<div class="p-4 bg-red-900/50 border border-red-700 text-red-300 rounded-xl flex items-center">${errorIcon} ${errorMessage}</div>`;
+            }
+        };
+
+        xhr.onerror = () => {
+            uploadProgressContainer.style.display = 'none';
+            uploadSubmitBtn.disabled = false;
+            uploadSubmitBtn.textContent = 'Share Content';
+            uploadResult.innerHTML = `<div class="p-4 bg-red-900/50 border border-red-700 text-red-300 rounded-xl flex items-center">${errorIcon} Network connection failed. Please try again.</div>`;
+        };
+
+        xhr.send(formData);
+    });
+
+    // --- Download Logic ---
+
+    document.getElementById("downloadForm").addEventListener("submit", function(e) {
+        e.preventDefault();
+        const code = this.code.value.trim();
+        if (code) {
+            // Let the backend handle the expiration check when the user clicks download
+            window.location.href = `/api/download?code=${code}`;
+        }
+    });
+
+
+    // --- Initial Load Check for Persistent State ---
+    window.onload = function() {
+        const storedData = localStorage.getItem('quickshare_data');
+        if (storedData) {
+            try {
+                const data = JSON.parse(storedData);
+                // Check if the link is still valid
+                const currentTimeSeconds = Date.now() / 1000;
+                const expirationTimeSeconds = data.timestamp + EXPIRATION_SECONDS;
+                
+                if (expirationTimeSeconds > currentTimeSeconds) {
+                    // Content is still valid, render it and restart timer
+                    renderSuccessResult(data);
+                    startCountdown(data.timestamp);
+                } else {
+                    // Content has expired, clear state and show an informative message
+                    localStorage.removeItem('quickshare_data');
+                    uploadResult.innerHTML = `<div class="p-4 bg-red-900/50 border border-red-700 text-red-300 rounded-lg flex items-center">
+                        ${errorIcon} Your previous share has expired. Please upload new content.
+                    </div>`;
+                }
+            } catch (e) {
+                // Handle corrupted localStorage data
+                localStorage.removeItem('quickshare_data');
+                console.error("Error parsing stored data:", e);
+            }
+        }
+    };
+</script>
+
+</body>
+</html>
