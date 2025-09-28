@@ -8,7 +8,7 @@ import threading
 app = Flask(__name__)
 
 # --- Configuration ---
-UPLOAD_FOLDER = "uploads" 
+UPLOAD_FOLDER = "/tmp/uploads" 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
