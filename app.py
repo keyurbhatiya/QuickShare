@@ -5,6 +5,9 @@ import time
 import hashlib
 import threading
 import platform
+import shutil
+from io import BytesIO
+import zipfile
 
 app = Flask(__name__)
 
@@ -26,40 +29,22 @@ CLEANUP_INTERVAL_SECONDS = 60 # Check for expired files every minute
 
 # --- Data Structures (CRITICAL: In-memory store) ---
 # For a production application, this MUST be replaced by a persistent store (e.g., Redis, Firestore).
-# { "code": { "filepath": ..., "timestamp": ..., "hash": ..., "filename": ... } }
+# { 
+#   "code": { 
+#       "dirpath": ..., 
+#       "timestamp": ..., 
+#       "files": [ {"filename": ..., "filesize": ...}, ... ], # List of files/text items
+#       "content_type": "files" or "text" or "mixed" 
+#   } 
+# }
 storage = {} 
-# Reverse lookup for deduplication: { "hash": "code" }
-hash_to_code = {}
-
-# -------------------------------
-# Core Logic: Content Hashing
-# -------------------------------
-def get_content_hash(content, is_file=False):
-    """Calculates SHA256 hash for deduplication."""
-    hasher = hashlib.sha256()
-    
-    if is_file:
-        # File object needs chunk reading (safer for large files)
-        while True:
-            chunk = content.read(4096)
-            if not chunk:
-                break
-            hasher.update(chunk)
-        # Reset pointer for file saving later
-        content.seek(0)
-    else:
-        # Text/Link content
-        hasher.update(content.encode('utf-8'))
-        
-    return hasher.hexdigest()
 
 # -------------------------------
 # Core Logic: Cleanup Thread
 # -------------------------------
 def cleanup_expired_files():
-    """Periodically removes expired files and data from storage/disk."""
+    """Periodically removes expired file directories, data, and QR codes."""
     
-    # Use a list of codes to delete to avoid modifying dict while iterating
     codes_to_delete = []
     
     for code, data in storage.items():
@@ -68,21 +53,18 @@ def cleanup_expired_files():
 
     for code in codes_to_delete:
         try:
-            data = storage[code]
-            
-            # 1. Delete the actual file/link content
-            if os.path.exists(data['filepath']):
-                os.remove(data['filepath'])
-            
-            # 2. Delete the QR code image
-            qr_path = os.path.join(UPLOAD_FOLDER, f"{code}_qr.png")
-            if os.path.exists(qr_path):
-                os.remove(qr_path)
-            
-            # 3. Remove from in-memory stores
-            del hash_to_code[data['hash']]
-            del storage[code]
-            print(f"Cleanup: Deleted expired content for code {code}", file=sys.stderr)
+            data = storage.pop(code, None)
+            if data:
+                # 1. Delete the entire content directory (which includes all files)
+                if os.path.exists(data['dirpath']):
+                    shutil.rmtree(data['dirpath'])
+                
+                # 2. Delete the QR code image
+                qr_path = os.path.join(UPLOAD_FOLDER, f"{code}_qr.png")
+                if os.path.exists(qr_path):
+                    os.remove(qr_path)
+                
+                print(f"Cleanup: Deleted expired content for code {code}", file=sys.stderr)
             
         except Exception as e:
             # Log any deletion error but continue cleanup
@@ -92,7 +74,6 @@ def cleanup_expired_files():
     threading.Timer(CLEANUP_INTERVAL_SECONDS, cleanup_expired_files).start()
 
 # Start the cleanup thread immediately upon startup
-# The thread is set as daemon so it won't prevent the main app from exiting
 cleanup_thread = threading.Thread(target=cleanup_expired_files, daemon=True)
 cleanup_thread.start()
 
@@ -103,74 +84,80 @@ cleanup_thread.start()
 @app.route("/")
 def index():
     """Serves the main frontend HTML file."""
-    return render_template("index.html")
+    # We pass the expiration time to the frontend for countdown logic consistency
+    return render_template("index.html", expiration_seconds=EXPIRATION_SECONDS)
 
 # -------------------------------
-# API: Upload (Links or File)
+# API: Upload (Multiple Files and/or Text/Links)
 # -------------------------------
 @app.route("/api/upload", methods=["POST"])
 def upload():
-    """Handles uploads, checks for duplication, and sets expiration."""
+    """Handles uploads, saves content to a unique directory, and sets expiration."""
     
-    links = request.form.get("links", "").strip()
-    file_obj = request.files.get("file")
+    files_list = request.files.getlist("file")
+    links_text = request.form.get("links", "").strip()
     
-    filepath = None
-    file_hash = None
-    original_filename = None
-    
-    # 1. Determine content hash and check for existing content
-    if file_obj and file_obj.filename:
-        original_filename = file_obj.filename
-        file_hash = get_content_hash(file_obj, is_file=True)
-    elif links:
-        original_filename = "Links_or_Text"
-        file_hash = get_content_hash(links, is_file=False)
-    else:
-        return jsonify({"error": "Please provide either links/text or select a file to upload."}), 400
+    if not (files_list and files_list[0].filename) and not links_text:
+        return jsonify({"error": "Please provide files or paste links/text to share."}), 400
 
-    # Check for duplication (same content uploaded recently)
-    if file_hash in hash_to_code:
-        code = hash_to_code[file_hash]
-        data = storage[code]
-        
-        # If the existing entry is still valid, reuse it
-        if time.time() - data['timestamp'] < EXPIRATION_SECONDS:
-            print(f"Deduplication: Reusing code {code} for identical content.", file=sys.stderr)
-            return jsonify({
-                "message": "Content already uploaded. Reusing code.",
-                "code": code,
-                "download_url": f"/api/download?code={code}",
-                "qr_code": f"/qr/{code}",
-                "timestamp": data['timestamp'],
-                "expires_in": EXPIRATION_SECONDS
-            })
-
-    # 2. Generate new code and save content
+    # 1. Generate new unique code and directory
     code = str(uuid.uuid4())[:6] 
+    dir_path = os.path.join(UPLOAD_FOLDER, code)
+    os.makedirs(dir_path, exist_ok=True)
     
-    if file_obj and file_obj.filename:
-        filename_on_disk = f"{code}_{original_filename}"
-        filepath = os.path.join(UPLOAD_FOLDER, filename_on_disk)
-        # file_obj pointer was reset in get_content_hash, now save it
-        file_obj.save(filepath)
-    elif links:
-        filename_on_disk = f"{code}_links.txt"
-        filepath = os.path.join(UPLOAD_FOLDER, filename_on_disk)
-        with open(filepath, "w") as f:
-            f.write(links)
+    saved_files_metadata = []
+    
+    # 2. Save file uploads (if any)
+    content_type = ""
+    
+    if files_list and files_list[0].filename:
+        content_type = "files"
+        for file_obj in files_list:
+            if file_obj.filename:
+                # Use a simpler filename on disk, but store original for download
+                filename_on_disk = file_obj.filename
+                filepath = os.path.join(dir_path, filename_on_disk)
+                file_obj.save(filepath)
+                saved_files_metadata.append({
+                    "filename": filename_on_disk,
+                    "filepath": filepath,
+                    "filesize": os.path.getsize(filepath)
+                })
 
-    # 3. Store data
+    # 3. Save links/text as a file (if any)
+    if links_text:
+        if content_type == "files":
+            content_type = "mixed"
+        else:
+            content_type = "text"
+            
+        text_filename = "quickshare_text_or_links.txt"
+        text_filepath = os.path.join(dir_path, text_filename)
+        with open(text_filepath, "w") as f:
+            f.write("--- Content shared via QuickShare ---\n\n")
+            f.write(links_text)
+            
+        saved_files_metadata.append({
+            "filename": text_filename,
+            "filepath": text_filepath,
+            "filesize": os.path.getsize(text_filepath)
+        })
+
+    # 4. Check for deduplication (only for exact single file or text content)
+    # NOTE: Deduplication for multiple files is skipped for complexity/risk reasons 
+    # and given the short expiration time.
+    
+    # 5. Store data
     current_time = time.time()
     storage[code] = {
-        "filepath": filepath,
+        "dirpath": dir_path,
         "timestamp": current_time,
-        "hash": file_hash,
-        "filename": original_filename
+        "files": saved_files_metadata,
+        "content_type": content_type,
+        "expires_in": EXPIRATION_SECONDS
     }
-    hash_to_code[file_hash] = code # Update hash lookup
 
-    # 4. Generate QR code (using request.url_root for shareability)
+    # 6. Generate QR code
     download_link_public = f"{request.url_root.rstrip('/')}/api/download?code={code}"
     qr_path = os.path.join(UPLOAD_FOLDER, f"{code}_qr.png")
     try:
@@ -178,16 +165,17 @@ def upload():
         qr.save(qr_path)
     except Exception as e:
         print(f"QR Code generation failed for code {code}: {e}", file=sys.stderr)
-        qr_path = None # Indicate failure
+        qr_path = None 
 
-    # 5. Return success response
+    # 7. Return success response
     return jsonify({
         "message": "Content uploaded successfully.",
         "code": code,
         "download_url": f"/api/download?code={code}", 
         "qr_code": f"/qr/{code}" if qr_path else None,
         "timestamp": current_time,
-        "expires_in": EXPIRATION_SECONDS
+        "expires_in": EXPIRATION_SECONDS,
+        "files": [f['filename'] for f in saved_files_metadata]
     })
 
 # -------------------------------
@@ -195,7 +183,7 @@ def upload():
 # -------------------------------
 @app.route("/api/download", methods=["GET"])
 def download():
-    """Serves the file if the code is valid and not expired."""
+    """Serves all shared content as a ZIP file if the code is valid and not expired."""
     code = request.args.get("code")
     
     if not code or code not in storage:
@@ -205,27 +193,47 @@ def download():
     
     # Check for expiration
     if time.time() - data['timestamp'] > EXPIRATION_SECONDS:
-        # If expired but not yet cleaned up by the thread, immediately clean it up
+        # Perform immediate cleanup if expired
         try:
-            del hash_to_code[data['hash']]
-            del storage[code]
-            if os.path.exists(data['filepath']):
-                os.remove(data['filepath'])
+            if os.path.exists(data['dirpath']):
+                shutil.rmtree(data['dirpath'])
             qr_path = os.path.join(UPLOAD_FOLDER, f"{code}_qr.png")
             if os.path.exists(qr_path):
                 os.remove(qr_path)
+            del storage[code]
         except Exception:
-            pass # Ignore cleanup errors
+            pass 
             
-        return jsonify({"error": "The download link has expired. Please re-upload the content."}), 410 # 410 Gone
+        return jsonify({"error": "The download link has expired. Please re-upload the content."}), 410 
     
-    filepath = data['filepath']
+    # --- Create In-Memory ZIP File ---
+    memory_file = BytesIO()
+    zip_filename = f"QuickShare_{code}.zip"
     
-    if not os.path.exists(filepath):
-        # File is missing on disk but in memory (shouldn't happen, but good check)
-        return jsonify({"error": "File not found on server (server error). Please try again."}), 500
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        dir_path = data['dirpath']
         
-    return send_file(filepath, as_attachment=True, download_name=data['filename'])
+        if not os.path.exists(dir_path):
+             return jsonify({"error": "Content directory missing on server (server error). Please try again."}), 500
+
+        for item in data['files']:
+            file_path = item['filepath']
+            # Only add the file to the ZIP if it exists
+            if os.path.exists(file_path):
+                 # Add file using the original filename as the name inside the ZIP
+                 zf.write(file_path, arcname=item['filename'])
+            else:
+                print(f"File missing on disk: {file_path}", file=sys.stderr)
+
+    # Rewind the in-memory file to the start for sending
+    memory_file.seek(0)
+    
+    return send_file(
+        memory_file,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=zip_filename
+    )
 
 # -------------------------------
 # Serve QR Code
@@ -233,7 +241,6 @@ def download():
 @app.route("/qr/<code>")
 def get_qr(code):
     """Serves the generated QR code image."""
-    # Check for code validity/existence before serving QR
     if code not in storage:
         return jsonify({"error": "QR code not found or expired."}), 404
         
