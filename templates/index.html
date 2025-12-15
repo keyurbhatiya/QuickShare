@@ -3,516 +3,349 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QuickShare - Professional File & Link Sharing</title>
-    <!-- Load Tailwind CSS -->
+    <title>QuickShare | Flip Transfer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
     <style>
-        /* Use Inter font for a professional look */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
         body {
-            font-family: 'Inter', sans-serif;
-            min-height: 100vh;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc;
+            overflow-x: hidden;
+            perspective: 1000px; /* Essential for 3D effect */
+        }
+
+        /* --- Aurora Background --- */
+        .aurora-bg {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1;
+            background: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0, transparent 50%), 
+                radial-gradient(at 100% 0%, rgba(236, 72, 153, 0.15) 0, transparent 50%), 
+                radial-gradient(at 100% 100%, rgba(34, 211, 238, 0.15) 0, transparent 50%), 
+                radial-gradient(at 0% 100%, rgba(251, 191, 36, 0.15) 0, transparent 50%);
+            background-size: 200% 200%;
+            animation: aurora 20s ease infinite alternate;
+        }
+        @keyframes aurora { 0% { background-position: 0% 0%; } 100% { background-position: 100% 100%; } }
+
+        /* --- 3D Flip Mechanics --- */
+        .flip-container {
+            width: 100%;
+            max-width: 500px;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Bouncy transition */
+        }
+
+        .flip-container.flipped {
+            transform: rotateY(180deg);
+        }
+
+        /* Common Face Styles */
+        .card-face {
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 20px 40px -5px rgba(0, 0, 0, 0.1);
+            border-radius: 32px;
+            padding: 2rem;
+            width: 100%;
+        }
+
+        /* Front Face (Send) */
+        .face-front {
+            position: relative; /* Takes up space in DOM */
+            z-index: 2;
+            transform: rotateY(0deg);
+        }
+
+        /* Back Face (Receive) */
+        .face-back {
+            position: absolute; /* Overlays front */
+            top: 0; left: 0;
+            height: 100%;
+            z-index: 1;
+            transform: rotateY(180deg);
             display: flex;
-            flex-direction: column; /* Stack content vertically */
-            background-color: #0d1117; /* Dark background */
+            flex-direction: column;
+            justify-content: center;
         }
-        .card-container {
-            max-width: 90%;
-            width: 500px;
+
+        /* --- UI Elements --- */
+        .modern-input {
+            background: #ffffff; border: 2px solid #e2e8f0; transition: all 0.2s ease; color: #0f172a;
         }
-        /* Custom progress bar transition */
-        .progress-bar {
-            transition: width 0.3s ease-in-out;
+        .modern-input:focus {
+            border-color: #6366f1; box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1); outline: none;
         }
-        /* Style for drag-and-drop highlight */
-        #drop-area.highlight {
-            background-color: #1e293b; 
-            border-color: #3b82f6;
+        
+        .drop-zone {
+            background-color: rgba(255, 255, 255, 0.6);
+            background-image: url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' rx='20' ry='20' stroke='%23CBD5E1FF' stroke-width='2' stroke-dasharray='12%2c 12' stroke-dashoffset='0' stroke-linecap='square'/%3e%3c/svg%3e");
+            transition: all 0.3s ease;
         }
+        .drop-zone:hover, .drop-zone.highlight {
+            background-color: #eff6ff;
+            background-image: url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' rx='20' ry='20' stroke='%236366F1FF' stroke-width='2' stroke-dasharray='12%2c 12' stroke-dashoffset='0' stroke-linecap='square'/%3e%3c/svg%3e");
+        }
+
+        .btn-gradient {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            transition: all 0.3s ease;
+        }
+        .btn-gradient:hover:not(:disabled) { opacity: 0.95; transform: translateY(-1px); box-shadow: 0 10px 20px -5px rgba(79, 70, 229, 0.4); }
+        .btn-gradient:disabled { background: #cbd5e1; cursor: not-allowed; }
     </style>
 </head>
-<body class="bg-gray-900 text-gray-100 p-4">
+<body class="flex flex-col min-h-screen text-slate-900">
 
-<!-- Main content wrapper -->
-<div class="flex flex-col items-center justify-center flex-grow w-full">
-    <div class="card-container mx-auto">
-        <header class="text-center mb-10">
-            <!-- Lucide Icon for Professional Visuals (Share/Upload) -->
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 text-blue-500 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/>
-            </svg>
-            <h1 class="text-3xl font-extrabold mt-3 text-white">QuickShare</h1>
-            <p class="text-gray-400 mt-1">Content is valid for **5 minutes** before permanent deletion.</p>
-        </header>
-
-        <!-- Upload/Sender Card -->
-        <div class="bg-[#161b22] border border-gray-700 rounded-xl shadow-2xl p-6 mb-8">
-            <h2 class="text-xl font-semibold mb-5 text-white">Sender: Upload & Generate Code</h2>
-            <form id="uploadForm">
-                <!-- Links Input -->
-                <div class="mb-4">
-                    <label for="linksInput" class="block text-sm font-medium text-gray-300 mb-2">Paste Links or Text (Saved as `quickshare_text_or_links.txt`)</label>
-                    <textarea class="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg focus:ring-blue-500 focus:border-blue-500 placeholder-gray-500 transition duration-150 ease-in-out resize-none h-24" 
-                              id="linksInput" name="links" placeholder="https://link-to-file.com&#10;Some quick text..." oninput="renderFileList()"></textarea>
+    <div class="aurora-bg"></div>
+    
+    <div class="flex-grow flex items-center justify-center p-4">
+        
+        <div class="flip-container" id="flipCard">
+            
+            <div class="card-face face-front">
+                <div class="flex justify-between items-start mb-6">
+                    <div>
+                        <h1 class="text-2xl font-extrabold text-slate-900">QuickShare</h1>
+                        <p class="text-sm text-slate-500 font-medium">Send Content</p>
+                    </div>
+                    <button onclick="toggleFlip()" class="group flex items-center gap-2 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl transition-all">
+                        <span class="text-xs font-bold text-slate-600">Receive</span>
+                        <div class="w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-sm text-indigo-600 group-hover:rotate-180 transition-transform duration-500">
+                            <i class="fa-solid fa-arrow-right-arrow-left text-[10px]"></i>
+                        </div>
+                    </button>
                 </div>
 
-                <!-- File Drop Area -->
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-300 mb-2">Or, Upload Files</label>
-                    <div id="drop-area" class="border-2 border-dashed border-gray-600 rounded-lg p-10 text-center cursor-pointer transition duration-300 hover:border-blue-500/50">
-                        <!-- Added 'multiple' attribute -->
+                <form id="uploadForm" class="space-y-5">
+                    <div id="drop-area" class="drop-zone rounded-[24px] p-6 text-center cursor-pointer relative group">
                         <input type="file" id="fileInput" name="file" class="hidden" multiple onchange="renderFileList()">
-                        <!-- Upload Cloud Icon -->
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-gray-500 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 19v-6"/><path d="M12 13l4 4"/><path d="M12 13l-4 4"/><path d="M10 20h4"/><path d="M18 10V6a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v4"/><path d="M16 10H8"/>
-                        </svg>
-                        <p class="mt-3 text-sm text-gray-400">Drag and drop **multiple files** or <span class="text-blue-400 font-semibold">Click to browse</span></p>
+                        <div class="transition-transform duration-300 group-hover:scale-105">
+                            <div class="w-10 h-10 mx-auto bg-white rounded-full flex items-center justify-center text-indigo-600 mb-2 shadow-sm border border-slate-100">
+                                <i class="fa-solid fa-cloud-arrow-up"></i>
+                            </div>
+                            <h3 class="font-bold text-slate-800 text-sm">Upload Files</h3>
+                        </div>
+                    </div>
+
+                    <textarea id="linksInput" name="links" 
+                        class="modern-input w-full p-4 rounded-2xl text-sm font-medium min-h-[80px] resize-none" 
+                        placeholder="Paste text, links, or code snippets..." oninput="renderFileList()"></textarea>
+
+                    <div id="fileListContainer" class="hidden">
+                        <ul id="fileList" class="space-y-2 max-h-32 overflow-y-auto pr-1"></ul>
+                    </div>
+
+                    <button type="submit" class="btn-gradient w-full py-3.5 rounded-2xl text-white font-bold shadow-xl flex justify-center items-center gap-2" disabled>
+                        <span>Create Link</span> <i class="fa-solid fa-magic text-xs"></i>
+                    </button>
+                </form>
+
+                <div id="uploadProgressContainer" class="mt-4 hidden">
+                    <div class="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                        <div id="progressBarFill" class="h-full bg-indigo-500 rounded-full transition-all duration-300" style="width: 0%"></div>
                     </div>
                 </div>
-
-                <!-- File/Text List Preview -->
-                <div id="fileListContainer" class="mb-6">
-                    <p class="text-sm font-medium text-gray-400 mb-1">Items to Share:</p>
-                    <ul id="fileList" class="text-sm space-y-1 p-3 bg-gray-800 rounded-lg border border-gray-700">
-                        <li class="text-gray-500 italic">No files or text entered.</li>
-                    </ul>
-                </div>
-
-
-                <button type="submit" class="w-full bg-blue-600 text-white p-3 rounded-lg font-bold hover:bg-blue-700 transition duration-300 focus:outline-none focus:ring-4 focus:ring-blue-500/50" disabled>
-                    Share Content
-                </button>
-            </form>
-
-            <!-- Upload Progress & Result Section -->
-            <div id="uploadProgressContainer" class="mt-6" style="display:none;">
-                <p class="text-sm text-gray-300 mb-2 font-medium" id="uploadStatusText">Uploading (0%)...</p>
-                <div class="w-full bg-gray-700 rounded-full h-2.5">
-                    <div id="progressBarFill" class="bg-blue-500 h-2.5 rounded-full progress-bar" style="width: 0%"></div>
-                </div>
+                <div id="uploadResult" class="mt-4 empty:hidden"></div>
             </div>
 
-            <div id="uploadResult" class="mt-6">
-                <!-- Results will be injected here -->
-            </div>
-        </div>
-
-        <!-- Download/Receiver Card -->
-        <div class="bg-[#161b22] border border-gray-700 rounded-xl shadow-2xl p-6">
-            <h2 class="text-xl font-semibold mb-5 text-white">Receiver: Download Content</h2>
-            <form id="downloadForm">
-                <div class="flex flex-col sm:flex-row sm:space-x-3 space-y-3 sm:space-y-0">
-                    <input type="text" class="flex-1 p-3 bg-gray-800 border border-gray-700 rounded-lg focus:ring-green-500 focus:border-green-500 placeholder-gray-500 transition duration-150 ease-in-out text-lg" 
-                           name="code" placeholder="Enter 6-digit Code">
-                    <button type="submit" class="bg-green-600 text-white p-3 rounded-lg font-bold hover:bg-green-700 transition duration-300 focus:outline-none focus:ring-4 focus:ring-green-500/50 flex items-center justify-center">
-                        <!-- Download Icon -->
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-                        Download
+            <div class="card-face face-back">
+                
+                <div class="flex justify-between items-start mb-8">
+                    <div>
+                        <h1 class="text-2xl font-extrabold text-slate-900">QuickShare</h1>
+                        <p class="text-sm text-slate-500 font-medium">Download</p>
+                    </div>
+                    <button onclick="toggleFlip()" class="group flex items-center gap-2 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl transition-all">
+                        <div class="w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-sm text-emerald-600 group-hover:-rotate-180 transition-transform duration-500">
+                            <i class="fa-solid fa-arrow-right-arrow-left text-[10px]"></i>
+                        </div>
+                        <span class="text-xs font-bold text-slate-600">Send</span>
                     </button>
                 </div>
-            </form>
+
+                <div class="text-center space-y-6">
+                    <div class="w-20 h-20 bg-indigo-50 rounded-full mx-auto flex items-center justify-center text-indigo-500 mb-2 animate-pulse">
+                        <i class="fa-solid fa-download text-3xl"></i>
+                    </div>
+                    
+                    <form id="downloadForm" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Enter 6-Digit Code</label>
+                            <input type="text" name="code" 
+                                class="modern-input w-full p-4 rounded-2xl text-center font-mono text-3xl font-bold tracking-[0.5em] text-slate-900 placeholder:text-slate-200 placeholder:tracking-normal" 
+                                placeholder="000000" maxlength="6" required autocomplete="off">
+                        </div>
+                        <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-2xl font-bold transition-colors shadow-lg">
+                            Download Content
+                        </button>
+                    </form>
+                </div>
+                
+                <div class="mt-8 text-center">
+                    <p class="text-[10px] text-slate-400">Content expires automatically after 5 minutes.</p>
+                </div>
+            </div>
+
         </div>
+
+        <footer class="fixed bottom-4 left-0 w-full text-center pointer-events-none">
+            <div class="pointer-events-auto inline-flex items-center gap-6 bg-white/80 backdrop-blur-md px-6 py-2 rounded-full shadow-sm border border-white/50">
+                <a href="https://linkedin.com/in/keyurbhatiya" target="_blank" class="text-slate-400 hover:text-[#0077b5] transition-transform hover:scale-110"><i class="fab fa-linkedin"></i></a>
+                <a href="https://github.com/keyurbhatiya" target="_blank" class="text-slate-400 hover:text-slate-900 transition-transform hover:scale-110"><i class="fab fa-github"></i></a>
+                <a href="https://keyurbhatiya.com" target="_blank" class="text-slate-400 hover:text-indigo-600 transition-transform hover:scale-110"><i class="fa-solid fa-globe"></i></a>
+            </div>
+            <p class="text-[10px] text-slate-400 font-medium mt-2">© 2025 Keyur Bhatiya</p>
+        </footer>
     </div>
-</div>
-
-<!-- Footer with Copyright and Social Links -->
-<footer class="mt-8 text-center text-gray-500 pb-4">
-<div class="flex justify-center space-x-6 mb-3">
-    <!-- LinkedIn -->
-    <a href="https://linkedin.com/in/keyurbhatiya" target="_blank" class="hover:text-blue-500 transition" aria-label="LinkedIn">
-    <i class="fab fa-linkedin fa-xl"></i>
-    </a>
-
-    <!-- GitHub -->
-    <a href="https://github.com/keyurbhatiya" target="_blank" class="hover:text-gray-900 dark:hover:text-white transition" aria-label="GitHub">
-    <i class="fab fa-github fa-xl"></i>
-    </a>
-
-    <!-- Instagram -->
-    <a href="https://www.instagram.com/keyur_bhatiya" target="_blank" class="hover:text-pink-500 transition" aria-label="Instagram">
-    <i class="fab fa-instagram fa-xl"></i>
-    </a>
-</div>
-
-    <p class="text-sm">&copy; 2025 Keyur Bhatiya. All rights reserved.</p>
-</footer>
 
 <script>
-    // --- Lucide Icon SVGs (used in script for result messages) ---
-    const successIcon = '<svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-green-400 mr-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
-    const errorIcon = '<svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-red-400 mr-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" x2="9" y1="9" y2="15"/><line x1="9" x2="15" y1="9" y2="15"/></svg>';
-    const copyIcon = '<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
-    const linkIcon = '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
-    const fileIcon = '<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-400 mr-2 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>';
-    const textIcon = '<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-400 mr-2 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h10"/><path d="M2 7h10"/><path d="M14 12a2 2 0 0 1-2 2H2"/><path d="M12 20H2"/><path d="M18 12h4"/><path d="M18 16h4"/><path d="M18 20h4"/></svg>';
-    
-    // --- DOM Elements ---
-    const dropArea = document.getElementById('drop-area');
-    const fileInput = document.getElementById('fileInput');
-    const linksInput = document.getElementById("linksInput");
-    const uploadForm = document.getElementById("uploadForm");
-    const uploadSubmitBtn = uploadForm.querySelector('button[type="submit"]');
-    const uploadProgressContainer = document.getElementById("uploadProgressContainer");
-    const progressBarFill = document.getElementById("progressBarFill");
-    const uploadStatusText = document.getElementById("uploadStatusText");
-    const uploadResult = document.getElementById("uploadResult");
-    const fileListContainer = document.getElementById("fileListContainer");
-    const fileList = document.getElementById("fileList");
+    // --- Flip Logic ---
+    function toggleFlip() {
+        document.getElementById('flipCard').classList.toggle('flipped');
+    }
 
-    let countdownInterval = null;
-    // Assuming EXPIRATION_SECONDS is available if passed from the server or hardcoded (5 minutes)
+    // --- Configuration ---
     const EXPIRATION_SECONDS = 5 * 60; 
+    let countdownInterval = null;
+    const els = {
+        dropArea: document.getElementById('drop-area'),
+        fileInput: document.getElementById('fileInput'),
+        linksInput: document.getElementById("linksInput"),
+        uploadForm: document.getElementById("uploadForm"),
+        submitBtn: document.getElementById("uploadForm").querySelector('button[type="submit"]'),
+        progressContainer: document.getElementById("uploadProgressContainer"),
+        progressBar: document.getElementById("progressBarFill"),
+        resultArea: document.getElementById("uploadResult"),
+        fileListContainer: document.getElementById("fileListContainer"),
+        fileList: document.getElementById("fileList")
+    };
 
-    // --- Utility Functions ---
+    // --- Render File List ---
+    window.renderFileList = () => {
+        const textVal = els.linksInput.value.trim();
+        const files = els.fileInput.files;
+        const hasContent = textVal.length > 0 || files.length > 0;
 
-    function preventDefaults(e) {
-        e.preventDefault();
-        e.stopPropagation();
-    }
-
-    // Displays selected files and text/links status
-    function renderFileList() {
-        const hasLinks = linksInput.value.trim().length > 0;
-        const hasFiles = fileInput.files.length > 0;
+        els.fileList.innerHTML = '';
+        els.fileListContainer.classList.toggle('hidden', !hasContent);
+        els.submitBtn.disabled = !hasContent;
         
-        fileList.innerHTML = '';
-        
-        if (!hasLinks && !hasFiles) {
-             fileList.innerHTML = '<li class="text-gray-500 italic">No files or text entered.</li>';
-        } else {
-            // 1. Add Text/Links entry
-            if (hasLinks) {
-                const textPreview = linksInput.value.trim().substring(0, 30) + (linksInput.value.trim().length > 30 ? '...' : '');
-                fileList.innerHTML += `<li class="flex items-center text-gray-300">${textIcon} Text/Links: <span class="ml-1 font-mono text-xs text-blue-400">${textPreview}</span></li>`;
-            }
-            
-            // 2. Add File entries
-            for (let i = 0; i < fileInput.files.length; i++) {
-                const file = fileInput.files[i];
-                fileList.innerHTML += `<li class="flex items-center text-gray-300">${fileIcon} ${file.name}</li>`;
-            }
+        if (textVal) {
+            els.fileList.innerHTML += `
+                <li class="flex justify-between items-center text-xs p-2 bg-slate-50 rounded-lg border border-slate-100">
+                    <span class="font-bold text-slate-700"><i class="fa-solid fa-align-left mr-2 text-indigo-400"></i>Text</span>
+                    <button type="button" onclick="clearText()" class="text-slate-400 hover:text-red-500"><i class="fa-solid fa-times"></i></button>
+                </li>`;
         }
-        
-        checkFormValidity();
-    }
+        Array.from(files).forEach(f => {
+            els.fileList.innerHTML += `
+                <li class="text-xs p-2 bg-slate-50 rounded-lg border border-slate-100 flex items-center text-slate-600">
+                    <i class="fa-regular fa-file mr-2 text-emerald-500"></i> ${f.name}
+                </li>`;
+        });
+    };
 
+    window.clearText = () => { els.linksInput.value = ''; renderFileList(); }
 
-    function checkFormValidity() {
-        const hasLinks = linksInput.value.trim().length > 0;
-        const hasFiles = fileInput.files.length > 0;
-        uploadSubmitBtn.disabled = !(hasLinks || hasFiles);
-    }
-    
-    // Initial check and listeners
-    checkFormValidity();
-    linksInput.addEventListener('input', renderFileList);
-    
-    // --- Drag & Drop Handlers ---
-
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        dropArea.addEventListener(eventName, preventDefaults, false);
-    });
-
-    ['dragenter', 'dragover'].forEach(eventName => {
-        dropArea.addEventListener(eventName, () => dropArea.classList.add('highlight'), false);
-    });
-
-    ['dragleave', 'drop'].forEach(eventName => {
-        dropArea.addEventListener(eventName, () => dropArea.classList.remove('highlight'), false);
-    });
-
-    dropArea.addEventListener('drop', handleDrop, false);
-
-    dropArea.addEventListener('click', () => {
-        fileInput.click();
-    });
-
-    function handleDrop(e) {
-        let dt = e.dataTransfer;
-        fileInput.files = dt.files;
+    // --- Drag & Drop ---
+    const prevent = (e) => { e.preventDefault(); e.stopPropagation(); };
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => els.dropArea.addEventListener(evt, prevent));
+    els.dropArea.addEventListener('dragenter', () => els.dropArea.classList.add('highlight'));
+    els.dropArea.addEventListener('dragleave', () => els.dropArea.classList.remove('highlight'));
+    els.dropArea.addEventListener('drop', (e) => {
+        els.dropArea.classList.remove('highlight');
+        els.fileInput.files = e.dataTransfer.files;
         renderFileList();
-        // Do not auto-submit on drop, let user check the file list first
-    }
+    });
+    els.dropArea.addEventListener('click', () => els.fileInput.click());
 
-    // --- Clipboard Copy Function ---
-    function copyToClipboard(text, element) {
-        try {
-            const tempInput = document.createElement('textarea');
-            tempInput.value = text;
-            document.body.appendChild(tempInput);
-            tempInput.select();
-            document.execCommand('copy');
-            document.body.removeChild(tempInput);
-
-            const originalText = element.dataset.originalText || element.textContent;
-            element.dataset.originalText = originalText;
-            element.textContent = 'Copied!';
-            
-            // Revert button text after 2 seconds
-            setTimeout(() => {
-                element.textContent = originalText;
-                // Clear the temporary attribute
-                delete element.dataset.originalText;
-            }, 2000);
-        } catch (err) {
-            console.error('Copy failed:', err);
-        }
-    }
-
-    // --- Expiration Countdown Logic ---
-    function startCountdown(timestamp) {
-        if (countdownInterval) {
-            clearInterval(countdownInterval);
-        }
-
-        const expirationTime = timestamp + EXPIRATION_SECONDS;
-        const timerElement = document.getElementById('countdownTimer');
-        
-        function updateTimer() {
-            // Use Date.now() / 1000 to get current time in seconds
-            const remaining = Math.max(0, expirationTime - (Date.now() / 1000));
-            const minutes = Math.floor(remaining / 60);
-            const seconds = Math.floor(remaining % 60);
-
-            if (remaining <= 0) {
-                clearInterval(countdownInterval);
-                timerElement.innerHTML = '<span class="text-red-400 font-bold">Expired!</span>';
-                localStorage.removeItem('quickshare_data');
-
-                // Visually update the result card to show expiration
-                const resultCard = uploadResult.querySelector('div.p-4');
-                if (resultCard) {
-                    resultCard.classList.remove('bg-green-900/50', 'border-green-700', 'text-green-300');
-                    resultCard.classList.add('bg-red-900/50', 'border-red-700', 'text-red-300');
-                }
-            } else {
-                timerElement.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-            }
-        }
-
-        countdownInterval = setInterval(updateTimer, 1000);
-        updateTimer(); // Initial call
-    }
-    
-    // --- Reusable Result Renderer ---
-    function renderSuccessResult(data) {
-        const downloadUrlPath = data.download_url || `/api/download?code=${data.code}`;
-        const downloadUrl = window.location.origin + downloadUrlPath;
-
-        const qrCodeHtml = data.qr_code 
-            ? `<img src="${data.qr_code}" class="w-32 h-32 mt-4 mx-auto border border-gray-700 rounded-lg p-1 bg-white" alt="QR Code">
-               <p class="text-xs text-gray-400 mt-2">Scan to download on mobile.</p>` 
-            : '';
-            
-        // Render the list of shared items
-        const fileItems = data.files.map(name => 
-            `<li class="text-sm text-gray-300 flex items-center">${fileIcon} ${name}</li>`
-        ).join('');
-        
-        const fileCount = data.files.length;
-        const downloadTypeText = fileCount > 1 
-            ? `Download All ${fileCount} Items (ZIP)` 
-            : `Download Shared Content`;
-
-        uploadResult.innerHTML = `
-            <div class="p-4 bg-green-900/50 border border-green-700 text-green-300 rounded-xl">
-                <div class="flex items-center mb-3">
-                    ${successIcon}
-                    <span class="text-lg font-semibold text-white">${data.message}</span>
-                </div>
-                
-                <div class="flex justify-between items-center mb-4 p-3 bg-gray-800 rounded-lg border border-gray-700">
-                    <p class="text-sm font-medium text-gray-400">Time Remaining:</p>
-                    <span id="countdownTimer" class="text-xl font-mono text-yellow-300 font-bold">5:00</span>
-                </div>
-                
-                <!-- Shared Items List -->
-                <div class="mb-4">
-                    <p class="text-sm font-medium text-gray-400 mb-2">Shared Items:</p>
-                    <ul class="space-y-1 p-3 bg-gray-700/50 rounded-lg max-h-32 overflow-y-auto">${fileItems}</ul>
-                </div>
-                
-                <!-- CODE DISPLAY -->
-                <div class="flex items-center bg-gray-800 p-3 rounded-lg justify-between mb-4">
-                    <span id="shareCode" class="text-2xl font-mono font-bold text-blue-300">${data.code}</span>
-                    <button id="copyCodeBtn" type="button" class="flex items-center space-x-1 p-2 text-sm text-gray-300 bg-gray-700 rounded-md hover:bg-gray-600 transition">
-                        ${copyIcon}
-                        <span>Copy Code</span>
-                    </button>
-                </div>
-
-                <!-- COPY LINK BUTTON -->
-                <button id="copyLinkBtn" type="button" class="w-full inline-flex justify-center items-center px-4 py-2 border border-blue-600 text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 transition">
-                    ${linkIcon}
-                    ${downloadTypeText}
-                </button>
-
-                ${qrCodeHtml}
-            </div>`;
-
-        // Add event listeners dynamically after injecting HTML
-        document.getElementById('copyCodeBtn').addEventListener('click', (event) => {
-            event.preventDefault(); 
-            copyToClipboard(data.code, document.getElementById('copyCodeBtn'));
-        });
-        
-        document.getElementById('copyLinkBtn').addEventListener('click', (event) => {
-            event.preventDefault(); 
-            copyToClipboard(downloadUrl, document.getElementById('copyLinkBtn'));
-        });
-    }
-
-
-    // --- Upload Logic (XMLHttpRequest for Progress) ---
-
-    uploadForm.addEventListener("submit", async function(e) {
+    // --- Upload ---
+    els.uploadForm.addEventListener("submit", (e) => {
         e.preventDefault();
+        els.resultArea.innerHTML = '';
+        els.progressContainer.classList.remove('hidden');
+        els.submitBtn.disabled = true;
+        els.submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
         
         const formData = new FormData();
-        const files = fileInput.files;
-        const links = linksInput.value.trim();
-
-        const hasLinks = links.length > 0;
-        const hasFiles = files.length > 0;
-
-        if (!hasLinks && !hasFiles) {
-            uploadResult.innerHTML = `<div class="p-4 bg-red-900/50 border border-red-700 text-red-300 rounded-lg flex items-center">${errorIcon} Please provide files or paste links/text.</div>`;
-            return;
-        }
-
-        // Populate FormData
-        if (hasLinks) {
-            formData.append('links', links);
-        }
-        if (hasFiles) {
-            for (let i = 0; i < files.length; i++) {
-                // Must use the name 'file' for Flask's getlist("file") to work
-                formData.append('file', files[i], files[i].name); 
-            }
-        }
-
-        // --- Prepare UI for Upload ---
-        uploadResult.innerHTML = '';
-        uploadProgressContainer.style.display = 'block';
-        progressBarFill.style.width = '0%';
-        uploadStatusText.textContent = 'Uploading (0%)...';
-        
-        uploadSubmitBtn.disabled = true;
-        uploadSubmitBtn.textContent = 'Processing...';
-
+        const textVal = els.linksInput.value.trim();
+        if (textVal) formData.append('links', textVal);
+        Array.from(els.fileInput.files).forEach(f => formData.append('file', f, f.name));
 
         const xhr = new XMLHttpRequest();
         xhr.open('POST', '/api/upload', true);
-
-        // Progress Handler (only tracks total file size being sent)
-        xhr.upload.addEventListener('progress', (event) => {
-            if (event.lengthComputable) {
-                const percentComplete = (event.loaded / event.total) * 100;
-                const roundedPercent = Math.round(percentComplete);
-                progressBarFill.style.width = `${roundedPercent}%`;
-                uploadStatusText.textContent = `Uploading (${roundedPercent}%)...`;
-            }
+        xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable) els.progressBar.style.width = `${Math.round((e.loaded / e.total) * 100)}%`;
         });
-
-        // Load/Error Handler
         xhr.onload = () => {
-            uploadProgressContainer.style.display = 'none';
-            uploadSubmitBtn.disabled = false;
-            uploadSubmitBtn.textContent = 'Share Content';
-
-            let data;
+            els.progressContainer.classList.add('hidden');
+            els.submitBtn.disabled = false;
+            els.submitBtn.innerHTML = 'Create Link <i class="fa-solid fa-magic text-xs ml-2"></i>';
             try {
-                data = JSON.parse(xhr.responseText);
-            } catch (err) {
-                uploadResult.innerHTML = `<div class="p-4 bg-red-900/50 border border-red-700 text-red-300 rounded-xl flex items-center">${errorIcon} Server response error.</div>`;
-                return;
-            }
-
-
-            if (xhr.status === 200) {
-                // --- Store data for persistence on refresh ---
-                localStorage.setItem('quickshare_data', JSON.stringify({
-                    code: data.code,
-                    timestamp: data.timestamp, // Server-provided Unix timestamp (seconds)
-                    download_url: data.download_url,
-                    qr_code: data.qr_code,
-                    message: data.message,
-                    files: data.files // Store the list of file names
-                }));
-
-                // --- Render Result ---
-                renderSuccessResult(data);
-
-                // Start the countdown timer
-                if (data.timestamp) {
-                    startCountdown(data.timestamp);
-                }
-
-                // Clear input fields and reset form state
-                linksInput.value = '';
-                fileInput.value = ''; 
-                renderFileList(); // Update file list to clear it
-            } else {
-                // --- Error Response Rendering ---
-                const errorMessage = data.error || "An unknown error occurred.";
-                uploadResult.innerHTML = `<div class="p-4 bg-red-900/50 border border-red-700 text-red-300 rounded-xl flex items-center">${errorIcon} ${errorMessage}</div>`;
-            }
+                const data = JSON.parse(xhr.responseText);
+                if (xhr.status === 200) { saveToLocal(data); showSuccess(data); els.linksInput.value=''; els.fileInput.value=''; renderFileList(); }
+                else { showError(data.error); }
+            } catch (err) { showError('Server Error'); }
         };
-
-        xhr.onerror = () => {
-            uploadProgressContainer.style.display = 'none';
-            uploadSubmitBtn.disabled = false;
-            uploadSubmitBtn.textContent = 'Share Content';
-            uploadResult.innerHTML = `<div class="p-4 bg-red-900/50 border border-red-700 text-red-300 rounded-xl flex items-center">${errorIcon} Network connection failed. Please try again.</div>`;
-        };
-
+        xhr.onerror = () => { els.progressContainer.classList.add('hidden'); els.submitBtn.disabled = false; showError('Network Error'); };
         xhr.send(formData);
     });
 
-    // --- Download Logic ---
+    // --- Results ---
+    function showSuccess(data) {
+        const downloadUrl = `${window.location.origin}/api/download?code=${data.code}`;
+        els.resultArea.innerHTML = `
+            <div class="bg-indigo-50/80 rounded-xl p-4 border border-indigo-100 animate-[fadeIn_0.3s_ease-out]">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-xs font-bold text-indigo-900 bg-white px-2 py-1 rounded shadow-sm">Code: <span class="font-mono text-base ml-1">${data.code}</span></span>
+                    <span id="timerDisplay" class="text-[10px] font-mono font-bold text-indigo-500">5:00</span>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="copyText('${data.code}', this)" class="flex-1 bg-white border border-indigo-100 text-indigo-600 text-xs font-bold py-2 rounded-lg hover:bg-indigo-50">Copy Code</button>
+                    <button onclick="copyText('${downloadUrl}', this)" class="flex-1 bg-indigo-600 text-white text-xs font-bold py-2 rounded-lg hover:bg-indigo-700">Copy Link</button>
+                </div>
+            </div>`;
+        if(data.timestamp) startTimer(data.timestamp);
+    }
 
+    function showError(msg) { els.resultArea.innerHTML = `<p class="text-center text-xs text-red-500 font-bold bg-red-50 p-2 rounded-lg border border-red-100">${msg}</p>`; }
+
+    function startTimer(startTime) {
+        if(countdownInterval) clearInterval(countdownInterval);
+        const update = () => {
+            const left = (startTime + EXPIRATION_SECONDS) - (Date.now() / 1000);
+            if(left <= 0) { clearInterval(countdownInterval); localStorage.removeItem('qs_active'); const t = document.getElementById('timerDisplay'); if(t) t.innerText="Expired"; }
+            else { const m=Math.floor(left/60), s=Math.floor(left%60).toString().padStart(2,'0'); const t=document.getElementById('timerDisplay'); if(t) t.innerText=`${m}:${s}`; }
+        };
+        countdownInterval = setInterval(update, 1000); update();
+    }
+
+    window.copyText = (text, el) => {
+        const t = document.createElement('textarea'); t.value=text; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t);
+        const old=el.innerText; el.innerText="Copied!"; setTimeout(()=>el.innerText=old, 1000);
+    }
+
+    window.saveToLocal = (data) => localStorage.setItem('qs_active', JSON.stringify(data));
+    
+    // Download Redirect
     document.getElementById("downloadForm").addEventListener("submit", function(e) {
         e.preventDefault();
         const code = this.code.value.trim();
-        if (code) {
-            // Redirect to the download endpoint, which handles ZIP creation/delivery
-            window.location.href = `/api/download?code=${code}`;
-        }
+        if (code) window.location.href = `/api/download?code=${code}`;
     });
 
-
-    // --- Initial Load Check for Persistent State ---
-    window.onload = function() {
-        renderFileList(); // Initialize the empty file list on load
-        
-        const storedData = localStorage.getItem('quickshare_data');
-        if (storedData) {
-            try {
-                const data = JSON.parse(storedData);
-                // Check if the link is still valid
-                const currentTimeSeconds = Date.now() / 1000;
-                const expirationTimeSeconds = data.timestamp + EXPIRATION_SECONDS;
-                
-                if (expirationTimeSeconds > currentTimeSeconds) {
-                    // Content is still valid, render it and restart timer
-                    renderSuccessResult(data);
-                    startCountdown(data.timestamp);
-                } else {
-                    // Content has expired, clear state and show an informative message
-                    localStorage.removeItem('quickshare_data');
-                    uploadResult.innerHTML = `<div class="p-4 bg-red-900/50 border border-red-700 text-red-300 rounded-lg flex items-center">
-                        ${errorIcon} Your previous share has expired. Please upload new content.
-                    </div>`;
-                }
-            } catch (e) {
-                // Handle corrupted localStorage data
-                localStorage.removeItem('quickshare_data');
-                console.error("Error parsing stored data:", e);
-            }
-        }
-    };
+    // Init
+    window.onload = () => {
+        const saved = localStorage.getItem('qs_active');
+        if(saved) { try { const d = JSON.parse(saved); if((Date.now()/1000) < (d.timestamp + EXPIRATION_SECONDS)) showSuccess(d); else localStorage.removeItem('qs_active'); } catch(e){} }
+    }
 </script>
-
 </body>
 </html>
