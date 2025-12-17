@@ -3,3 +3,4 @@ gunicorn
 python-dotenv
 upstash-redis
 qrcode[pil]
+requests
