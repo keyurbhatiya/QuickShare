@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Link Expired | QuickShare</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background-color: #F8FAFC;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            color: #1e293b;
+        }
+        .animate-pop {
+            animation: pop 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            transform: scale(0.9);
+            opacity: 0;
+        }
+        @keyframes pop {
+            to { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-6">
+
+    <div class="w-full max-w-md bg-white rounded-3xl p-10 shadow-xl border border-slate-100 text-center animate-pop">
+        
+        <div class="w-24 h-24 bg-red-50 text-red-500 rounded-full flex items-center justify-center text-4xl mb-6 mx-auto shadow-sm">
+            <i class="fas fa-unlink"></i>
+        </div>
+
+        <h1 class="text-2xl font-bold text-slate-900 mb-3">Link Expired</h1>
+        
+        <p class="text-slate-500 mb-8 leading-relaxed">
+            The file you are looking for has vanished into the digital void. QuickShare links are only valid for 5 minutes.
+        </p>
+
+        <a href="/" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold py-4 rounded-xl transition-all hover:shadow-lg hover:shadow-slate-900/20 active:scale-[0.98] inline-flex justify-center items-center">
+            <i class="fas fa-paper-plane mr-2"></i>
+            Send New Files
+        </a>
+
+        <div class="mt-8 pt-6 border-t border-slate-50">
+            <p class="text-xs text-slate-400">
+                QuickShare &copy; 2025
+            </p>
+            <p class="mt-4 text-xs text-slate-400 font-medium">
+            Designed by <a href="https://keyurbhatiya.com" target="_blank" class="text-slate-500 hover:text-slate-800 underline decoration-slate-300 underline-offset-2">Keyur Bhatiya</a>
+        </p>
+        </div>
+    </div>
+
+</body>
+</html>

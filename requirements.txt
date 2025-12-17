@@ -1,4 +1,5 @@
-Flask==3.0.3
-qrcode==7.4.2
-Pillow
+flask
 gunicorn
+python-dotenv
+upstash-redis
+qrcode[pil]
