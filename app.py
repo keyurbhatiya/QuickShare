@@ -2,12 +2,10 @@ import os
 import sys
 import time
 import uuid
-import shutil
-import threading
-import platform
 import json
 import requests
 import qrcode
+import base64
 from io import BytesIO
 import dotenv
 from flask import Flask, request, jsonify, send_file, render_template, abort
@@ -15,20 +13,14 @@ from flask import Flask, request, jsonify, send_file, render_template, abort
 app = Flask(__name__)
 
 # --- Configuration ---
-# Get these from your Upstash Console
+# Get these from your Vercel Settings -> Environment Variables
 UPSTASH_REDIS_REST_URL = os.getenv("UPSTASH_REDIS_REST_URL")
 UPSTASH_REDIS_REST_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN")
 
 # Validity period (5 minutes)
 EXPIRATION_SECONDS = 5 * 60 
-
-if platform.system() == "Windows":
-    UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploads")
-else:
-    UPLOAD_FOLDER = "/tmp/uploads"
-
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+# Max size for Upstash Free Tier (approx 1MB safe limit)
+MAX_PAYLOAD_SIZE = 1024 * 1024 
 
 # --- Redis Helper (REST API) ---
 def redis_set(key, value, expire_seconds):
@@ -36,10 +28,14 @@ def redis_set(key, value, expire_seconds):
         print("Error: Upstash Credentials missing.", file=sys.stderr)
         return None
     
-    url = f"{UPSTASH_REDIS_REST_URL}/set/{key}/{value}/EX/{expire_seconds}"
-    headers = {"Authorization": f"Bearer {UPSTASH_REDIS_REST_TOKEN}"}
+    # We use a POST request here because the payload (files) might be large
+    url = f"{UPSTASH_REDIS_REST_URL}/set/{key}?EX={expire_seconds}"
+    headers = {
+        "Authorization": f"Bearer {UPSTASH_REDIS_REST_TOKEN}",
+        "Content-Type": "text/plain" 
+    }
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.post(url, headers=headers, data=value)
         return response.json()
     except Exception as e:
         print(f"Redis Set Error: {e}", file=sys.stderr)
@@ -61,26 +57,6 @@ def redis_get(key):
         print(f"Redis Get Error: {e}", file=sys.stderr)
         return None
 
-# --- Background Cleanup ---
-def cleanup_physical_files():
-    while True:
-        try:
-            now = time.time()
-            for dirname in os.listdir(UPLOAD_FOLDER):
-                dirpath = os.path.join(UPLOAD_FOLDER, dirname)
-                if os.path.isdir(dirpath):
-                    if now - os.path.getctime(dirpath) > EXPIRATION_SECONDS + 60:
-                        shutil.rmtree(dirpath)
-                elif dirname.endswith("_qr.png"):
-                    if now - os.path.getctime(dirpath) > EXPIRATION_SECONDS + 60:
-                        os.remove(dirpath)
-        except Exception:
-            pass
-        time.sleep(60)
-
-cleanup_thread = threading.Thread(target=cleanup_physical_files, daemon=True)
-cleanup_thread.start()
-
 # --- Routes ---
 
 @app.route("/")
@@ -95,47 +71,62 @@ def upload():
     if not (files_list and files_list[0].filename) and not links_text:
         return jsonify({"error": "No content provided."}), 400
 
-    code = str(uuid.uuid4())[:6]
-    dir_path = os.path.join(UPLOAD_FOLDER, code)
-    os.makedirs(dir_path, exist_ok=True)
-
     file_metadata = []
+    total_size = 0
 
+    # 1. Process Files (Convert to Base64 for Redis storage)
     if files_list and files_list[0].filename:
         for file_obj in files_list:
             if file_obj.filename:
-                filename = file_obj.filename
-                filepath = os.path.join(dir_path, filename)
-                file_obj.save(filepath)
+                file_content = file_obj.read()
+                size = len(file_content)
+                total_size += size
+                
+                if total_size > MAX_PAYLOAD_SIZE:
+                    return jsonify({"error": "Total size exceeds 1MB limit (Vercel/Redis Limit)."}), 413
+
+                # Encode content to base64 string to store in JSON
+                encoded_content = base64.b64encode(file_content).decode('utf-8')
+                
                 file_metadata.append({
-                    "name": filename,
+                    "name": file_obj.filename,
                     "type": "file",
-                    "size": os.path.getsize(filepath)
+                    "size": size,
+                    "content": encoded_content 
                 })
 
+    # 2. Process Text
     if links_text:
-        text_filename = "shared_text.txt"
-        text_filepath = os.path.join(dir_path, text_filename)
-        with open(text_filepath, "w") as f:
-            f.write(links_text)
+        encoded_text = base64.b64encode(links_text.encode('utf-8')).decode('utf-8')
+        size = len(links_text)
+        total_size += size
+        
+        if total_size > MAX_PAYLOAD_SIZE:
+             return jsonify({"error": "Total size exceeds 1MB limit."}), 413
+
         file_metadata.append({
-            "name": text_filename,
+            "name": "shared_text.txt",
             "type": "text",
-            "size": os.path.getsize(text_filepath)
+            "size": size,
+            "content": encoded_text
         })
 
+    # 3. Save to Redis
+    code = str(uuid.uuid4())[:6]
+    
     storage_data = json.dumps({
         "files": file_metadata,
         "created_at": time.time()
     })
     
-    redis_set(f"quickshare:{code}", storage_data, EXPIRATION_SECONDS)
+    # Store in Redis
+    result = redis_set(f"quickshare:{code}", storage_data, EXPIRATION_SECONDS)
+    
+    if not result:
+        return jsonify({"error": "Database connection failed."}), 500
 
     share_url = f"{request.url_root.rstrip('/')}/share/{code}"
-    qr_path = os.path.join(UPLOAD_FOLDER, f"{code}_qr.png")
-    qr = qrcode.make(share_url)
-    qr.save(qr_path)
-
+    
     return jsonify({
         "code": code,
         "share_url": share_url,
@@ -150,6 +141,8 @@ def view_shared(code):
     if not data:
         return render_template("error.html", message="This link has expired or is invalid."), 404
 
+    # We don't send the full content to the frontend, just metadata
+    # The template expects 'files' list with 'name' and 'size'
     return render_template("download.html", 
                            code=code, 
                            files=data['files'], 
@@ -162,18 +155,39 @@ def download_file(code, filename):
     if not data:
         abort(404, description="Link expired")
 
-    file_path = os.path.join(UPLOAD_FOLDER, code, filename)
-    if not os.path.exists(file_path):
-        abort(404, description="File not found on server")
+    # Find the specific file in the list
+    target_file = None
+    for f in data['files']:
+        if f['name'] == filename:
+            target_file = f
+            break
+            
+    if not target_file:
+        abort(404, description="File not found")
 
-    return send_file(file_path, as_attachment=True)
+    # Decode base64 content back to bytes
+    try:
+        file_bytes = base64.b64decode(target_file['content'])
+        return send_file(
+            BytesIO(file_bytes),
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        return abort(500, description="Error decoding file")
 
 @app.route("/qr/<code>")
 def get_qr(code):
-    qr_path = os.path.join(UPLOAD_FOLDER, f"{code}_qr.png")
-    if os.path.exists(qr_path):
-        return send_file(qr_path, mimetype="image/png")
-    return "QR not found", 404
+    # On Vercel, we can't save the QR to disk. We generate it on the fly.
+    share_url = f"{request.url_root.rstrip('/')}/share/{code}"
+    img = qrcode.make(share_url)
+    
+    memory_file = BytesIO()
+    img.save(memory_file, 'PNG')
+    memory_file.seek(0)
+    
+    return send_file(memory_file, mimetype="image/png")
 
+# For local testing only
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
